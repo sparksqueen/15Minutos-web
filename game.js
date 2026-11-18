@@ -212,6 +212,7 @@
 
   function handleAction(node) {
     playMusic();
+    if (node.action === "ReintentarNivel") return startLevel(state.level.number);
     if (node.action === "OnPlayPressed") return showLevels();
     if (node.action === "OnLevel1Selected" || node.action === "OnLevel2Selected" || node.action === "OnLevel3Selected") {
       return startLevel(Number(node.action[7]));
@@ -367,12 +368,18 @@
     if (intro.duration > 0) {
       const cinematic = document.createElement("div");
       cinematic.className = "cinematic";
-      cinematic.setAttribute("role", intro.chat ? "region" : "img");
+      cinematic.setAttribute("role", intro.chat || intro.letter ? "region" : "img");
       cinematic.setAttribute("aria-label", "Cinemática de " + level.name);
       toolbar.inert = true;
       ui.append(cinematic);
       state.cinematic = cinematic;
       if (intro.chat) state.phoneChat = overlays.phoneChat(intro.chat);
+      if (intro.letter) {
+        state.letter = overlays.cinematicLetter(data.sprites[intro.sprite].src, intro.letter, intro.letterLabel);
+        cinematic.classList.add("cinematic-full", "cinematic-letter");
+        if (intro.letterStyle) cinematic.dataset.letterStyle = intro.letterStyle;
+        cinematic.append(state.letter.element);
+      }
       preloadIntroAhead(state);
       renderIntro(state);
       canvas.focus();
@@ -381,6 +388,10 @@
 
   function renderIntro(game) {
     const time = game.elapsed;
+    if (game.letter) {
+      game.letter.advance(time);
+      return;
+    }
     const frames = game.intro.animation.frames;
     if (game.phoneChat && time < frames[0][0]) {
       const { phone, advance } = game.phoneChat;
@@ -423,6 +434,7 @@
     game.cinematic.remove();
     game.cinematic = null;
     game.phoneChat = null;
+    game.letter = null;
     game.toolbar.inert = false;
     for (const [, key] of game.intro.animation.frames) images.delete(key);
     images.delete(game.intro.sprite);
@@ -457,6 +469,7 @@
 
   function movePlayer(dx, dy) {
     const p = state.player;
+    const movementBox = state.level.feetBox ?? playerBox;
     const steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / .04);
     for (let i = 0; i < steps; i++) {
       slidePlayer(dx / steps, 0);
@@ -465,7 +478,7 @@
 
     function slidePlayer(x, y) {
       if (!x && !y) return;
-      const current = geo.translate(playerBox, p.x, p.y);
+      const current = geo.translate(movementBox, p.x, p.y);
       const pushesFor = fraction => {
         const dx = x * fraction;
         const dy = y * fraction;
@@ -824,7 +837,22 @@
     state.toolbar.hidden = true;
     state.placement.hidden = true;
     if (kind === "win") state.hud.hidden = true;
-    surface(state.level[kind], { full: true });
+    const ending = state.level[kind];
+    const { element } = surface(ending, { full: true });
+    if (ending.dialogue) {
+      element.classList.add("illustrated-ending");
+      const dialogue = document.createElement("p");
+      dialogue.className = "ending-dialogue";
+      dialogue.textContent = ending.dialogue;
+      element.append(dialogue);
+    }
+    if (ending.actions) {
+      const actions = document.createElement("nav");
+      actions.className = "ending-actions";
+      actions.setAttribute("aria-label", "Opciones del final");
+      actions.append(...ending.actions.map(action => overlays.button(action.label, () => handleAction(action))));
+      element.append(actions);
+    }
   }
 
   function update(dt, elapsed) {
@@ -892,7 +920,8 @@
     const [a, b, c, d] = object.matrix;
     const [fx, fy] = object.flip;
     context.save();
-    context.transform(a, b, c, d, object.x, object.y);
+    const cleanOffsetY = object.completed ? object.cleanOffsetY ?? 0 : 0;
+    context.transform(a, b, c, d, object.x, object.y + cleanOffsetY);
     context.scale(fx ? -1 : 1, fy ? 1 : -1);
     context.globalAlpha = object.alpha;
     context.imageSmoothingEnabled = smooth;

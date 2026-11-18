@@ -89,6 +89,45 @@ window.GameOverlays = (() => {
     return backdrop;
   }
 
+  function cinematicLetter(art, lines, label = "Carta de la Abuelita") {
+    const letter = element("article", "scene-letter");
+    letter.style.setProperty("--letter-art", `url("${art}")`);
+    letter.setAttribute("aria-label", label);
+    const copy = element("div", "scene-letter-copy");
+    copy.setAttribute("aria-hidden", "true");
+    const transcript = element("div", "scene-letter-transcript");
+    transcript.setAttribute("aria-live", "polite");
+    letter.append(copy, transcript);
+    const lettersPerSecond = 12;
+
+    const paragraphs = lines.map(([time, text], index) => {
+      const line = element("p");
+      const characters = Array.from(text, char => {
+        const glyph = element("span", "", char);
+        glyph.style.visibility = "hidden";
+        return glyph;
+      });
+      line.append(...characters);
+      copy.append(line);
+      // Finish each line before the next one starts.
+      const gap = (lines[index + 1]?.[0] ?? Infinity) - time;
+      const pace = Math.max(lettersPerSecond, characters.length / gap);
+      return { time, text, characters, pace, visible: 0 };
+    });
+
+    function advance(time) {
+      for (const line of paragraphs) {
+        if (time < line.time) break;
+        const { characters } = line;
+        if (line.visible === characters.length) continue;
+        const count = Math.min(characters.length, 1 + Math.floor((time - line.time) * line.pace));
+        while (line.visible < count) characters[line.visible++].style.visibility = "visible";
+        if (line.visible === characters.length) transcript.append(element("p", "", line.text));
+      }
+    }
+    return { element: letter, advance };
+  }
+
   function phoneChat(messages) {
     const phone = element("div", "scene-phone");
     phone.setAttribute("aria-label", "Chat con Susi Tinder");
@@ -318,5 +357,5 @@ window.GameOverlays = (() => {
     return backdrop;
   }
 
-  return { mainMenu, levels, button, iconButton, inventory, map, settings, tutorial, interactionTutorial, skipWarning, confirmExit, phoneChat };
+  return { mainMenu, levels, button, iconButton, inventory, map, settings, tutorial, interactionTutorial, skipWarning, confirmExit, phoneChat, cinematicLetter };
 })();

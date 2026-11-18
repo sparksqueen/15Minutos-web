@@ -10,6 +10,20 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: Caveat;
+  src: url("assets/Caveat-Latin.woff") format("woff");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Archivo;
+  src: url("assets/Archivo-Latin.woff") format("woff");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
 body, button { font-family: "Press Start", monospace; }
@@ -156,6 +170,115 @@ body, button { font-family: "Press Start", monospace; }
 }
 .cinematic-full { padding: 0; }
 .cinematic-full img { object-fit: cover; object-position: 46% 55%; }
+.cinematic-letter {
+  background: radial-gradient(ellipse at center, #76503a, #291916 78%);
+}
+.scene-letter {
+  --letter-width: min(calc(var(--cinematic-width) * .95), calc(var(--cinematic-height) * 1.64));
+  position: relative;
+  isolation: isolate;
+  width: var(--letter-width);
+  aspect-ratio: 1600 / 873;
+  display: grid;
+  align-items: center;
+  padding: 5% 0;
+  background: #f5e6cf;
+  border: 3px solid #6d4730;
+  box-shadow: 0 13px 55px #130b0880;
+}
+.scene-letter::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--letter-art) center / contain no-repeat;
+  mix-blend-mode: multiply;
+}
+.scene-letter-copy {
+  margin-inline: 25% 12%;
+  color: #3d2116;
+  font-family: var(--letter-font, Caveat, cursive);
+  font-size: max(calc(var(--letter-width) * var(--letter-size, .042)), calc(19px / var(--stage-scale)));
+  font-weight: 600;
+  font-size-adjust: none;
+  line-height: var(--letter-leading, 1.12);
+  letter-spacing: normal;
+}
+.scene-letter-copy p { margin: 0 0 .3em; }
+.scene-letter-copy p:first-child { margin-bottom: .55em; font-weight: 700; }
+.scene-letter-copy p:last-child { margin: .65em 0 0; text-align: right; font-weight: 700; }
+.scene-letter-transcript {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.large-ui .scene-letter-copy {
+  font-size: max(calc(var(--letter-width) * var(--letter-large-size, .049)), calc(22px / var(--stage-scale)));
+}
+.readable-ui .scene-letter-copy {
+  --letter-font: "15 Minutos Legible", monospace;
+  --letter-size: .033;
+  --letter-large-size: .038;
+  --letter-leading: 1.28;
+}
+.cinematic-letter[data-letter-style="museum"] .scene-letter {
+  --letter-width: min(calc(var(--cinematic-width) * .98), calc(var(--cinematic-height) * 1.82));
+  --letter-font: Archivo, system-ui, sans-serif;
+  --letter-size: .031;
+  --letter-large-size: .036;
+  --letter-leading: 1.3;
+  --letter-mobile-size: .052;
+  --letter-mobile-large-size: .06;
+  aspect-ratio: 1600 / 848;
+  background-color: #f7e8ca;
+}
+.cinematic-letter[data-letter-style="museum"] .scene-letter-copy { margin-inline: 19% 15%; }
+.cinematic-letter[data-letter-style="museum"] .scene-letter-copy p:first-child {
+  font-weight: 800;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+@media (max-aspect-ratio: 5/4) {
+  .scene-letter {
+    --letter-width: min(calc(var(--cinematic-width) * .9), calc(560px / var(--stage-scale)));
+    aspect-ratio: auto;
+    gap: calc(14px / var(--stage-scale));
+    padding: calc(22px / var(--stage-scale));
+    background: #f1dbb3;
+    border: calc(4px / var(--stage-scale)) solid #946446;
+    box-shadow: inset 0 0 0 2px #e6c395, 0 13px 55px #130b0880;
+  }
+  .scene-letter::before {
+    position: static;
+    width: calc(82px / var(--stage-scale));
+    aspect-ratio: 1;
+    background-size: 460% auto;
+    background-position: 3% 3%;
+    border-radius: 50%;
+  }
+  .scene-letter-copy {
+    margin: 0;
+    font-size: clamp(calc(17px / var(--stage-scale)), calc(var(--letter-width) * var(--letter-mobile-size, .064)), calc(34px / var(--stage-scale)));
+  }
+  .large-ui .scene-letter-copy {
+    font-size: clamp(calc(20px / var(--stage-scale)), calc(var(--letter-width) * var(--letter-mobile-large-size, .073)), calc(39px / var(--stage-scale)));
+  }
+  .readable-ui .scene-letter-copy {
+    --letter-mobile-size: .052;
+    --letter-mobile-large-size: .06;
+  }
+  .cinematic-letter[data-letter-style="museum"] .scene-letter {
+    --letter-width: min(calc(var(--cinematic-width) * .9), calc(560px / var(--stage-scale)));
+    aspect-ratio: auto;
+  }
+  .cinematic-letter[data-letter-style="museum"] .scene-letter-copy { margin-inline: 0; }
+  .cinematic-letter[data-letter-style="museum"] .scene-letter::before {
+    background-size: 630% auto;
+    background-position: 4% 2%;
+  }
+}
 .cinematic-dialogue {
   position: absolute; top: 10%; left: 9%;
   width: min(590px, 38%); margin: 0; padding: .72em .9em;
@@ -171,6 +294,78 @@ body, button { font-family: "Press Start", monospace; }
   background: #fff4df; transform: skew(25deg) rotate(24deg);
 }
 .large-ui .cinematic-dialogue { font-size: max(41px, calc(18px / var(--stage-scale))); }
+.illustrated-ending { background: #402821; }
+.illustrated-ending [data-name="Background"] > .ui-image {
+  height: calc(100% - 126px);
+  object-fit: cover;
+  object-position: center bottom;
+  image-rendering: auto;
+}
+.illustrated-ending:has(> .ending-actions) [data-name="Background"] > .ui-image {
+  height: 100%;
+}
+.ending-dialogue {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1280px;
+  margin: 0;
+  padding: 25px 36px;
+  border: 6px solid #482b26;
+  border-radius: 22px;
+  background: #fff1d3;
+  color: #352018;
+  box-shadow: 0 8px #482b2650;
+  font-size: 24px;
+  line-height: 1.48;
+  text-align: center;
+  white-space: pre-line;
+}
+.ending-dialogue::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 24%;
+  width: 27px;
+  height: 27px;
+  margin-top: -12px;
+  border-right: 6px solid #482b26;
+  border-bottom: 6px solid #482b26;
+  background: inherit;
+  transform: skew(-12deg) rotate(45deg);
+}
+.large-ui .ending-dialogue { font-size: 28px; }
+:is([data-name="GameOverMuseo"], [data-name="FinalPerfectoMuseo"]) > .ending-dialogue {
+  top: 145px;
+  right: 62px;
+  left: auto;
+  transform: none;
+  width: 650px;
+  padding: 24px;
+  border-radius: 8px;
+  font-size: 21px;
+}
+.large-ui :is([data-name="GameOverMuseo"], [data-name="FinalPerfectoMuseo"]) > .ending-dialogue {
+  font-size: 25px;
+}
+:is([data-name="GameOverMuseo"], [data-name="FinalPerfectoMuseo"]) > .ending-dialogue::after {
+  left: 12%;
+}
+.ending-actions {
+  position: absolute;
+  inset: auto 0 0;
+  height: 126px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+.ending-actions .wood-button { min-width: 292px; pointer-events: auto; }
+[data-name="FinalPerfectoAbuela"] > .ending-actions {
+  justify-content: space-between;
+  padding-inline: 84px;
+}
 @media (max-aspect-ratio: 5/4) {
   .cinematic-dialogue { top: 6%; left: 8%; width: min(750px, 84%); }
   .cinematic-dialogue::after { right: 42%; }
