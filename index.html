@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>15 Minutos</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="scene.js"></script>
+  <script defer src="geometry.js"></script>
+  <script defer src="overlays.js"></script>
+  <script defer src="game.js"></script>
+</head>
+<body>
+  <main id="viewport" aria-label="15 Minutos" aria-busy="true">
+    <div id="stage">
+      <canvas id="world" tabindex="-1" aria-label="Escenario. Usá flechas o WASD para caminar, espacio para interactuar y G para llevar objetos. Usá los botones del HUD para Mapa, Pendientes y Ajustes."></canvas>
+      <div id="ui"></div>
+      <output id="loading" role="status">Cargando…</output>
+    </div>
+  </main>
+</body>
+</html>
