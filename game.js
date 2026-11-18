@@ -6,6 +6,7 @@
   const overlays = window.GameOverlays;
   const width = 1920;
   const height = 1080;
+  const viewport = document.querySelector("#viewport");
   const stage = document.querySelector("#stage");
   const canvas = document.querySelector("#world");
   const ui = document.querySelector("#ui");
@@ -21,6 +22,7 @@
   const pickupReach = .76;
   const zoneReferencePoints = [null, [.5, .5], [0, 0], [1, 0], [0, 1], [1, 1], [.5, 0], [.5, 1], [0, .5], [1, .5]];
   const sounds = { brush };
+  const mobile = window.GameMobile(viewport, { interact: useInteraction, carry: tapCarry, skip: requestIntroSkip, start: showLevels });
   let state;
   let loadId = 0;
   let lastTime = performance.now();
@@ -33,6 +35,7 @@
   let toggleCarry = savedFlag("ToggleCarry");
   let colorblind = savedFlag("Colorblind");
   let readable = savedFlag("ReadableFont");
+  let navigationTutorialSeen = savedFlag("NavigationTutorialSeen");
   brush.volume = readVolume("EffectsVolume");
   stage.classList.toggle("large-ui", largeText);
   stage.classList.toggle("colorblind-ui", colorblind);
@@ -79,13 +82,16 @@
   }
 
   function resize() {
-    const scale = Math.min(innerWidth / width, innerHeight / height);
+    const availableWidth = viewport.clientWidth || innerWidth;
+    const availableHeight = viewport.clientHeight || innerHeight;
+    const scale = Math.min(availableWidth / width, availableHeight / height);
     stage.style.transform = `scale(${scale})`;
-    stage.style.left = `${(innerWidth - width * scale) / 2}px`;
-    stage.style.top = `${(innerHeight - height * scale) / 2}px`;
-    stage.style.setProperty("--cinematic-width", `${innerWidth / scale}px`);
-    stage.style.setProperty("--cinematic-height", `${innerHeight / scale}px`);
+    stage.style.left = `${(availableWidth - width * scale) / 2}px`;
+    stage.style.top = `${(availableHeight - height * scale) / 2}px`;
+    stage.style.setProperty("--cinematic-width", `${availableWidth / scale}px`);
+    stage.style.setProperty("--cinematic-height", `${availableHeight / scale}px`);
     stage.style.setProperty("--stage-scale", scale);
+    mobile.invalidateLayout();
     const pixels = Math.min(devicePixelRatio || 1, 2);
     canvas.width = Math.max(1, Math.round(width * scale * pixels));
     canvas.height = Math.max(1, Math.round(height * scale * pixels));
@@ -343,8 +349,8 @@
     const buttons = document.createElement("div");
     buttons.className = "hud-tool-icons";
     buttons.append(
-      overlays.iconButton("Mapa", "map", openMap),
-      overlays.iconButton("Pendientes", "list", openInventory),
+      overlays.iconButton("Mapa", "map", () => openMap()),
+      overlays.iconButton("Inventario de pendientes", "list", () => openInventory()),
       overlays.iconButton("Ajustes", "gear", openSettings),
     );
     const progress = document.createElement("output");
@@ -362,7 +368,7 @@
       fill, chaosValue,
       camera: [player.x, player.y], direction: "idle", animationTime: 0,
       elapsed: 0, left: targets.length, panel: null, held: null, lastDropped: null, events: new Set(),
-      tutorial: null, tutorialSeen: false, interactionTutorialSeen: false, carryArmed: false, carrySuspended: false,
+      tutorial: null, tutorialSeen: false, interactionTutorialSeen: false, carryArmed: false, carrySuspended: false, touchCarry: false,
     };
     updateHud();
     if (intro.duration > 0) {
@@ -487,9 +493,13 @@
         for (const object of state.solids) {
           if (object.walkOver) continue;
           const paths = solidPaths(object);
+          const from = object.playerFeetBox
+            ? geo.translate(object.playerFeetBox, p.x, p.y)
+            : current;
+          const to = from === current ? next : geo.translate(from, dx, dy);
           const inWay = paths.some(path =>
-            geo.intersection(path, object.x, object.y, next) >
-              geo.intersection(path, object.x, object.y, current) + 1e-7);
+            geo.intersection(path, object.x, object.y, to) >
+              geo.intersection(path, object.x, object.y, from) + 1e-7);
           if (!inWay) continue;
           // Free rigid bodies can slide ahead of the player through the doorway.
           if (!object.body || object.completed ||
@@ -542,11 +552,20 @@
       playSound("brush");
     }
     updateHud();
-    checkWin();
+    afterTask();
   }
 
-  function checkWin() {
-    if (state.left === 0 && state.targets.length) showEnd("win");
+  function afterTask() {
+    if (state.left === 0 && state.targets.length) return showEnd("win");
+    if (state.level.number !== 1 || navigationTutorialSeen || state.left === state.targets.length) return;
+    navigationTutorialSeen = true;
+    savedFlag("NavigationTutorialSeen", true);
+    showTutorial(overlays.navigationTutorial({
+      pending: state.left,
+      onContinue: closeTutorial,
+      onInventory: () => { closeTutorial(); openInventory(true); },
+      onMap: () => { closeTutorial(); openMap(true); },
+    }));
   }
 
   function inPickupRange(object, x = object.x, y = object.y, reach = pickupReach) {
@@ -562,7 +581,7 @@
 
   function updatePickup() {
     const player = state.player;
-    if (state.carrySuspended || (toggleCarry ? state.carryArmed : keys.has("KeyG"))) {
+    if (state.touchCarry || state.carrySuspended || (toggleCarry ? state.carryArmed : keys.has("KeyG"))) {
       if (!state.held) {
         const canGrab = object => object && object.tag === "Pickup" && !object.completed && inPickupRange(object);
         const object = canGrab(state.lastDropped) ? state.lastDropped : state.targets.find(canGrab);
@@ -607,7 +626,7 @@
       playSound("brush");
     }
     updateHud();
-    checkWin();
+    afterTask();
   }
 
   function objectHitsSolid(object, x, y, moving = false) {
@@ -640,14 +659,24 @@
   function updatePrompt() {
     if (state.held) {
       const correct = Boolean(deliveryZone(state.held));
+      if (mobile.active) {
+        mobile.setLabels("Interactuar", correct ? "Colocar" : "Soltar");
+        setPrompt([]);
+        return;
+      }
       setPrompt([["G", correct ? "Colocar acá" : toggleCarry ? "Tocá para soltar" : "Soltá para dejarlo"]], correct);
       return;
     }
 
     const target = state.targets.find(object => !object.completed && object.action !== 3 && touchingTrigger(object));
+    const action = target?.action === 0 ? "Limpiar" : "Quitar";
+    if (mobile.active) {
+      mobile.setLabels(target ? action : "Interactuar", "Agarrar");
+      setPrompt([]);
+      return;
+    }
     const pickup = state.targets.some(object => object.tag === "Pickup" && !object.completed && inPickupRange(object));
     if (target) {
-      const action = target.action === 0 ? "Limpiar" : "Quitar";
       setPrompt(pickup ? [["Espacio", action], ["G", "Agarrar"]] : [["Espacio", action]]);
     } else {
       setPrompt(pickup ? [["G", "Agarrar"]] : []);
@@ -699,15 +728,16 @@
         Pillow: "Volvé a mirar el dormitorio.",
       })[stem] || (object.action === 3 || object.name === "Skate"
         ? "Compará el ambiente con el plano y buscá dónde encaja."
-        : "Acercate y usá Espacio cuando aparezca el aviso.");
+        : mobile.active ? "Acercate y tocá Limpiar o Quitar." : "Acercate y usá Espacio cuando aparezca el aviso.");
       return { name: name + (number > 1 ? " " + number : ""), sprite: data.sprites[object.sprite]?.src,
         completed: object.completed, clue };
     });
   }
 
   function prepareOverlay() {
-    if (state.held && !toggleCarry) state.carrySuspended = true;
+    if (state.held && !state.touchCarry && !toggleCarry) state.carrySuspended = true;
     keys.clear();
+    mobile.reset();
   }
 
   function closeTutorial() {
@@ -727,7 +757,33 @@
     state.interactionTutorialSeen = true;
     const target = state.targets.find(canInteract);
     const sprite = data.sprites[target?.sprite]?.src;
-    showTutorial(overlays.interactionTutorial(sprite, closeTutorial));
+    showTutorial(overlays.interactionTutorial(sprite, closeTutorial, mobile.active));
+  }
+
+  function canPlay() {
+    return state?.screen === "playing" && !state.panel && !state.tutorial && !state.cinematic && !mobile.blocked;
+  }
+
+  function useInteraction() {
+    if (!canPlay()) return;
+    if (state.interactionTutorialSeen) interact();
+    else teachInteraction();
+  }
+
+  function tapCarry() {
+    if (!canPlay() || maybeTeachPickup()) return;
+    state.touchCarry = !state.held;
+    state.carryArmed = false;
+    state.carrySuspended = false;
+    keys.delete("KeyG");
+    updatePickup();
+    if (!state.held) state.touchCarry = false;
+  }
+
+  function requestIntroSkip() {
+    if (state?.cinematic && !state.panel && !mobile.blocked) {
+      openPanel(overlays.skipWarning(() => closePanel()));
+    }
   }
 
   function maybeTeachPickup() {
@@ -742,16 +798,18 @@
       sprite: data.sprites[object.sprite]?.src,
       hasDestination: state.zones.some(zone => zone.name === object.name),
       toggle: toggleCarry,
+      touch: mobile.active,
       onContinue: closeTutorial,
       onMap: () => { closeTutorial(); openMap(); },
     }));
     return true;
   }
 
-  function openPanel(panel) {
+  function openPanel(panel, pauseClock = false) {
     state.panelReturnFocus = document.activeElement;
     if (state.screen === "playing") prepareOverlay();
     state.panel = panel;
+    state.panelPausesClock = pauseClock;
     ui.append(panel);
     state.panelClock = panel.querySelector(".overlay-clock");
     panel.querySelector("button, input")?.focus();
@@ -761,6 +819,7 @@
     state.panel?.remove();
     state.panel = null;
     state.panelClock = null;
+    state.panelPausesClock = false;
     if (restoreFocus) {
       const previous = state.panelReturnFocus;
       if (state.screen === "title" && previous?.closest?.("#ui")) previous.focus();
@@ -768,22 +827,22 @@
     }
   }
 
-  function openMap() {
+  function openMap(pauseClock = false) {
     const mapImage = state.level.map.children.find(child => child.image);
     openPanel(overlays.map({
       map: data.sprites[mapImage.image].src,
       level: state.level.name,
       clock: state.clock.textContent,
       onClose: () => closePanel(),
-    }));
+    }), pauseClock);
   }
 
-  function openInventory() {
+  function openInventory(pauseClock = false) {
     openPanel(overlays.inventory({
       entries: notebookEntries(),
       clock: state.clock.textContent,
       onClose: () => closePanel(),
-    }));
+    }), pauseClock);
   }
 
   function openSettings() {
@@ -796,6 +855,7 @@
       toggle: toggleCarry,
       large: largeText,
       readable,
+      touch: mobile.active,
       onMusic: setVolume,
       onEffects: value => {
         brush.volume = value;
@@ -819,8 +879,8 @@
       onToggle: value => {
         toggleCarry = value;
         savedFlag("ToggleCarry", value);
-        state.carryArmed = value && Boolean(state.held);
-        state.carrySuspended = !value && Boolean(state.held);
+        state.carryArmed = value && Boolean(state.held) && !state.touchCarry;
+        state.carrySuspended = !value && Boolean(state.held) && !state.touchCarry;
       },
       onClose: () => closePanel(),
       onExit: state.screen === "playing" ? () => {
@@ -836,7 +896,7 @@
     closePanel(false);
     state.toolbar.hidden = true;
     state.placement.hidden = true;
-    if (kind === "win") state.hud.hidden = true;
+    state.hud.hidden = true;
     const ending = state.level[kind];
     const { element } = surface(ending, { full: true });
     if (ending.dialogue) {
@@ -846,16 +906,21 @@
       dialogue.textContent = ending.dialogue;
       element.append(dialogue);
     }
-    if (ending.actions) {
-      const actions = document.createElement("nav");
-      actions.className = "ending-actions";
-      actions.setAttribute("aria-label", "Opciones del final");
-      actions.append(...ending.actions.map(action => overlays.button(action.label, () => handleAction(action))));
-      element.append(actions);
-    }
+    const actions = document.createElement("nav");
+    actions.className = "ending-actions";
+    actions.setAttribute("aria-label", "Opciones del final");
+    const options = [
+      ["Reiniciar nivel", "ReintentarNivel"],
+      ["Volver al menú", "SalirDelJuego"],
+    ];
+    if (state.level.number === 3) options.splice(1, 0, ["Créditos", "IrACreditos"]);
+    if (ending.nextLevel) options.push(["Siguiente nivel", `IrAlNivel${ending.nextLevel}`]);
+    actions.append(...options.map(([label, action]) => overlays.button(label, () => handleAction({ action }))));
+    element.append(actions);
   }
 
   function update(dt, elapsed) {
+    if (state.panelPausesClock) return;
     if (!music.paused && state.screen !== "lose") {
       musicTime += elapsed;
       music.playbackRate = data.music.normal + (data.music.max - data.music.normal) * Math.min(1, musicTime / data.music.duration);
@@ -895,9 +960,9 @@
       const previousX = state.player.x;
       const previousY = state.player.y;
       const down = (...codes) => Number(codes.some(code => keys.has(code)));
-      const x = down("ArrowRight", "KeyD") - down("ArrowLeft", "KeyA");
-      const y = down("ArrowUp", "KeyW") - down("ArrowDown", "KeyS");
-      const speed = state.player.speed * dt / (Math.hypot(x, y) || 1);
+      const x = down("ArrowRight", "KeyD") - down("ArrowLeft", "KeyA") + mobile.movement.x;
+      const y = down("ArrowUp", "KeyW") - down("ArrowDown", "KeyS") + mobile.movement.y;
+      const speed = state.player.speed * dt / Math.max(1, Math.hypot(x, y));
       movePlayer(x * speed, y * speed);
       if ((state.player.x !== previousX || state.player.y !== previousY) && maybeTeachPickup()) return;
       const direction = y ? (y > 0 ? "up" : "down") : x ? (x > 0 ? "right" : "left") : "idle";
@@ -959,13 +1024,19 @@
   function tick(time) {
     const elapsed = Math.max(0, (time - lastTime) / 1000);
     lastTime = time;
-    if (state && !document.hidden) update(Math.min(.04, elapsed), elapsed);
+    if (state && !document.hidden && !mobile.blocked) update(Math.min(.04, elapsed), elapsed);
+    mobile.sync({
+      screen: state?.screen,
+      overlay: state?.tutorial || state?.panel,
+      cinematic: state?.cinematic,
+    });
     draw();
     requestAnimationFrame(tick);
   }
 
   const gameKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyG"]);
   window.addEventListener("keydown", event => {
+    if (mobile.blocked) return;
     if (event.code === "Escape" && ["credits", "levels"].includes(state?.screen)) {
       showTitle();
       return;
@@ -975,6 +1046,7 @@
       if (event.code === "Tab") {
         const modal = state.tutorial || state.panel;
         const controls = [...modal.querySelectorAll("button:not(:disabled), input")].filter(control => control.tabIndex >= 0);
+        if (!mobile.fullscreenControl.hidden) controls.push(mobile.fullscreenControl);
         const edge = event.shiftKey ? controls.at(0) : controls.at(-1);
         if (document.activeElement === edge) {
           event.preventDefault();
@@ -988,40 +1060,47 @@
       return;
     }
     if (state?.cinematic) {
-      if (event.code === "Escape" || event.code === "Tab" || gameKeys.has(event.code)) event.preventDefault();
-      if (event.code === "Escape" && !event.repeat) openPanel(overlays.skipWarning(() => closePanel()));
+      const activatesFullscreen = event.code === "Space" && event.target === mobile.fullscreenControl;
+      if (event.code === "Escape" || (gameKeys.has(event.code) && !activatesFullscreen)) event.preventDefault();
+      if (event.code === "Escape" && !event.repeat) requestIntroSkip();
       return;
     }
-    if (state?.screen !== "playing" || !gameKeys.has(event.code)) return;
+    if (!canPlay() || !gameKeys.has(event.code)) return;
     if (event.code === "Space" && event.target?.tagName === "BUTTON") return;
     event.preventDefault();
     keys.add(event.code);
     if (event.repeat) return;
     if (event.code === "KeyG") {
       if (maybeTeachPickup()) return;
+      state.touchCarry = false;
       state.carrySuspended = false;
       if (toggleCarry) state.carryArmed = !state.held;
       updatePickup();
     }
-    if (event.code === "Space") {
-      if (state.interactionTutorialSeen) interact();
-      else teachInteraction();
-    }
+    if (event.code === "Space") useInteraction();
   });
   window.addEventListener("keyup", event => {
     keys.delete(event.code);
-    if (event.code === "KeyG" && state?.screen === "playing" && !state.panel && !state.tutorial && !state.cinematic) updatePickup();
+    if (event.code === "KeyG" && canPlay()) updatePickup();
   });
-  window.addEventListener("blur", () => keys.clear());
+  window.addEventListener("blur", () => {
+    keys.clear();
+    mobile.reset();
+  });
   window.addEventListener("resize", resize);
+  window.visualViewport?.addEventListener("resize", resize);
   document.addEventListener("visibilitychange", () => {
     lastTime = performance.now();
-    if (document.hidden) keys.clear();
+    if (document.hidden) {
+      keys.clear();
+      mobile.reset();
+    }
   });
   window.addEventListener("pointerdown", playMusic, { once: true });
   window.addEventListener("keydown", playMusic, { once: true });
   resize();
   requestAnimationFrame(tick);
+  viewport.dataset.started = "true";
 
   preload([...Object.values(data.ui).flatMap(assetsForUi), ...assetsForUi(data.credits)])
     .then(() => {
@@ -1030,7 +1109,7 @@
         showTitle();
         loading.hidden = true;
       }
-      document.querySelector("#viewport").setAttribute("aria-busy", "false");
+      viewport.setAttribute("aria-busy", "false");
     })
     .catch(error => {
       console.error(error);

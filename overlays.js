@@ -161,10 +161,21 @@ window.GameOverlays = (() => {
     return { phone, advance };
   }
 
-  function tutorialPanel(title, lines, sprite, onContinue, onMap) {
+  function tutorialPanel(title, lines, sprite, onContinue, shortcuts = []) {
     const { backdrop, panel } = frame(title, "tutorial-panel");
     const copy = element("div", "tutorial-copy");
-    lines.forEach(line => copy.append(element("p", "", line)));
+    for (const line of lines) {
+      if (typeof line === "string") {
+        copy.append(element("p", "", line));
+      } else {
+        const row = element("p", "tutorial-tool");
+        const icon = element("img");
+        icon.src = "assets/hud-" + line.icon + ".png";
+        icon.alt = "";
+        row.append(icon, element("span", "", line.text));
+        copy.append(row);
+      }
+    }
     const content = element("div", sprite ? "tutorial-content" : "tutorial-content no-sprite");
     if (sprite) {
       const image = element("img", "tutorial-sprite");
@@ -175,20 +186,37 @@ window.GameOverlays = (() => {
     content.append(copy);
     panel.append(content);
     const footer = actions(panel, onContinue, "Entendido");
-    if (onMap) footer.prepend(button("Ver mapa", onMap, "wood-button secondary"));
+    footer.prepend(...shortcuts.map(([label, action]) => button(label, action, "wood-button secondary")));
     return backdrop;
   }
 
-  function tutorial({ sprite, hasDestination, onContinue, onMap, toggle }) {
-    const instructions = [toggle
+  function tutorial({ sprite, hasDestination, onContinue, onMap, toggle, touch }) {
+    const instructions = [touch
+      ? "Tocá Agarrar y movete con el joystick. Tocá Soltar para dejar el objeto."
+      : toggle
       ? "Tocá G para agarrar el objeto. Tocá G otra vez para soltarlo."
       : "Mantené G para agarrar el objeto y soltá la tecla para dejarlo."];
-    if (hasDestination) instructions.push("Cuando aparezca «Colocar acá», el objeto queda en su lugar.");
-    return tutorialPanel("Mover objetos", instructions, sprite, onContinue, onMap);
+    if (hasDestination) instructions.push(touch
+      ? "Cuando el botón diga Colocar, tocalo para dejar el objeto en su lugar."
+      : "Cuando aparezca «Colocar acá», el objeto queda en su lugar.");
+    return tutorialPanel("Mover objetos", instructions, sprite, onContinue, onMap ? [["Ver mapa", onMap]] : []);
   }
 
-  function interactionTutorial(sprite, onContinue) {
-    return tutorialPanel("Limpiar y quitar objetos", [
+  function navigationTutorial({ pending, onContinue, onInventory, onMap }) {
+    const tutorial = tutorialPanel("¿Qué falta por hacer?", [
+      pending === 1 ? "¡Primera tarea lista! Te queda una por hacer." : `¡Primera tarea lista! Te quedan ${pending} por hacer.`,
+      { icon: "list", text: "Inventario. Elegí un objeto pendiente y usá «Ver pista» si no sabés qué hacer con él." },
+      { icon: "map", text: "Mapa. Mirá el plano para ubicarte y elegir qué habitación revisar." },
+    ], null, onContinue, [["Ver inventario", onInventory], ["Ver mapa", onMap]]);
+    tutorial.classList.add("navigation-tutorial");
+    return tutorial;
+  }
+
+  function interactionTutorial(sprite, onContinue, touch) {
+    return tutorialPanel("Limpiar y quitar objetos", touch ? [
+      "Acercate a un objeto hasta que el botón diga Limpiar o Quitar.",
+      "Tocá ese botón para hacer la acción. Cada objeto que resolvés baja el Caosómetro.",
+    ] : [
       "Acercate a un objeto hasta que aparezca «Espacio · Limpiar» o «Espacio · Quitar».",
       "Presioná Espacio para hacer esa acción. Cada objeto que resolvés baja el Caosómetro.",
     ], sprite, onContinue);
@@ -347,7 +375,7 @@ window.GameOverlays = (() => {
     section("Sonido").append(range("Música", config.music, config.onMusic), range("Efectos", config.effects, config.onEffects));
     section("Accesibilidad").append(
       preference("Modo apto para daltónicos", config.colorblind, config.onColorblind),
-      preference("Agarrar con un toque", config.toggle, config.onToggle),
+      preference(config.touch ? "Agarrar con un toque (teclado)" : "Agarrar con un toque", config.toggle, config.onToggle),
       preference("Texto grande", config.large, config.onLarge),
       preference("Tipografía accesible", config.readable, config.onReadable),
     );
@@ -357,5 +385,5 @@ window.GameOverlays = (() => {
     return backdrop;
   }
 
-  return { mainMenu, levels, button, iconButton, inventory, map, settings, tutorial, interactionTutorial, skipWarning, confirmExit, phoneChat, cinematicLetter };
+  return { mainMenu, levels, button, iconButton, inventory, map, settings, tutorial, interactionTutorial, navigationTutorial, skipWarning, confirmExit, phoneChat, cinematicLetter };
 })();
